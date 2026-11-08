@@ -106,7 +106,9 @@ def color_and_label(
     time_start = time.time()
     prob_to_color = {k: rgb2hex(cmap(k / 100)) for k in range(101)}
     data_to_update["color_prob"] = data_to_update.apply(
-        lambda x_: prob_to_color[int(x_.score_predicted * 100)]
+        lambda x_: prob_to_color[
+            int(0 if pandas.isna(x_.score_predicted) else x_.score_predicted * 100)
+        ]
         if not x_.labeled
         else "#800080",
         axis=1,
