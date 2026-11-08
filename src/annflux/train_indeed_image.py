@@ -75,6 +75,8 @@ def train_then_features(
     train_folder = os.path.join(source.working_folder, "train_job")
     repo = source.repository
     labels_path = source.labels_path
+    if source.modality == "sound" and backend != "annflux":
+        raise ValueError("Sound projects only support the 'annflux' backend")
     if backend == "naturalis-ai":
         if not os.path.exists(labels_path):
             dataset, model = get_untrained_model(repo, architecture)
@@ -86,12 +88,26 @@ def train_then_features(
         extract_and_store_features(dataset, model, repo)
     elif backend == "annflux":
         dataset = repo.get(label=Dataset, tag="unseen").last()
-        if architecture == "clip":
-            from annflux.training.annflux.clip import ClipFeatureExtractor as Extractor
+        if source.modality == "sound":
+            # features were computed by scripts/prepare_sound.py, no image model involved
+            from annflux.training.annflux.precomputed import (
+                PrecomputedFeatureExtractor,
+            )
+
+            extractor = PrecomputedFeatureExtractor(source.features_path)
+            if train_method == "train_peft":
+                print(
+                    "PEFT/CLIP fine-tuning is not available for sound projects, "
+                    "skipping it and using the precomputed features"
+                )
+                train_method = None
+        elif architecture == "clip":
+            from annflux.training.annflux.clip import ClipFeatureExtractor
+
+            extractor = ClipFeatureExtractor()
         else:
             raise ValueError(f"'{architecture}' unknown. Choices are {['clip']}")
         #
-        extractor = Extractor()
         extractor.load_model()
         if train_method == "train_peft":
             data = add_annotations_and_set(dataset, source)

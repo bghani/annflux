@@ -23,6 +23,13 @@ from annflux.repository.repository import Repository
 base_data_path = os.path.expanduser(os.path.join("~", "annflux", "data"))
 
 
+def detect_modality(project_folder: Union[PathLike, str]) -> str:
+    """'sound' for projects made by scripts/prepare_sound.py (they have segments.csv), else 'image'"""
+    if os.path.exists(os.path.join(project_folder, "segments.csv")):
+        return "sound"
+    return "image"
+
+
 class AnnfluxSource(object):
     start_labels = []
     exclusivity = []
@@ -62,6 +69,19 @@ class AnnfluxSource(object):
             if base_data_path is not None
             else self.working_folder_
         )
+
+    @property
+    def project_folder(self):
+        return os.path.dirname(self.images_path)
+
+    @property
+    def modality(self) -> str:
+        return detect_modality(self.project_folder)
+
+    @property
+    def features_path(self):
+        """Precomputed features of a sound project, see scripts/prepare_sound.py"""
+        return os.path.join(self.project_folder, "features.npz")
 
     @property
     def labels_path(self):
