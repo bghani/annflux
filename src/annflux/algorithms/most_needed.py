@@ -27,21 +27,25 @@ logger = logging.getLogger("annflux_server")
 def diversify(
     features_sorted: np.array, diversify_from: int = None, fraction_others=0.1
 ) -> list[int]:
+    """
+    Farthest-point selection: repeatedly picks, from a random sample of the remaining items, the one
+    farthest from all items picked so far. Returns indices into features_sorted in pick order.
+    """
     if diversify_from is None:
         diversify_from = len(features_sorted)
     result: list[int] = [0]
 
     for _ in tqdm(range(diversify_from), total=diversify_from, desc="diversifying"):
         others = list(set(range(len(features_sorted))) - set(result))
+        if len(others) == 0:
+            break
         others = np.random.choice(
-            others, size=int(fraction_others * len(others)), replace=False
+            others, size=max(1, int(fraction_others * len(others))), replace=False
         )  # TODO(improvement): use most needed as weights
         others = list(sorted(others))
-        distances = pairwise_distances(
-            features_sorted[list(sorted(result))], features_sorted[others]
-        )
-        sum_distances = np.sum(distances, axis=0)
-        result.append(np.argmin(sum_distances))
+        distances = pairwise_distances(features_sorted[result], features_sorted[others])
+        min_distances = np.min(distances, axis=0)
+        result.append(int(others[np.argmax(min_distances)]))
 
     return result
 
