@@ -1,4 +1,8 @@
-birdnetlib
-spectrogrammer
-pydub
+numpy<2  # tflite-runtime wheels are built against numpy 1.x
+soundfile
 librosa
+pillow
+# birdnet backend
+birdnetlib
+tflite-runtime
+resampy  # birdnetlib resamples with res_type="kaiser_fast"
