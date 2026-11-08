@@ -9,6 +9,10 @@ requires-python = ">=3.11"
 dynamic = ["dependencies"]
 readme = "README.md"
 
+[project.optional-dependencies]
+# playback of sound projects in the UI; preparing them uses requirements.sound.txt
+sound = ["soundfile"]
+
 [project.scripts]
 annflux = "annflux.scripts.annflux_cli:execute"
 basic_ui = "annflux.ui.basic.run_server:ui_script_entry"

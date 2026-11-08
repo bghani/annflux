@@ -11,8 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import io
 import json
 import logging
+import math
 import os
 import sys
 import threading
@@ -29,6 +31,7 @@ from sklearn.ensemble import RandomForestRegressor
 from tensorflow.python.keras.callbacks import Callback
 
 from annflux.algorithms.embeddings import compute_tsne
+from annflux.shared import detect_modality
 from annflux.tools.core import AnnFluxState
 from annflux.tools.data import (
     add_group_to_exclusivity,
@@ -46,6 +49,8 @@ exclusivity_path: Optional[str] = None
 label_defs_path: Optional[str] = None
 label_provider_path: Optional[str] = None
 g_state: Optional[AnnFluxState] = None
+modality: Optional[str] = None  # "image" or "sound"
+sound_index: Optional[Tuple[str, Dict]] = None  # (audio_root, {uid: segment})
 logger: Optional[logging.Logger] = None
 
 
@@ -62,7 +67,9 @@ def _init():
         g_state, \
         exclusivity_path, \
         label_provider_path, \
-        label_defs_path
+        label_defs_path, \
+        modality, \
+        sound_index
     global logger
     project_root = os.getenv("PROJECT_ROOT", None)
     if project_root is None:
@@ -72,6 +79,8 @@ def _init():
         working_folder = os.path.join(project_root, "annflux")
 
     g_state = AnnFluxState(working_folder)
+    modality = detect_modality(project_root)
+    sound_index = None
 
     g_state.doublecheck_path = os.path.join(
         g_state.data_folder, "annflux", "doublecheck.json"
@@ -133,19 +142,6 @@ def nocache(view):
     return update_wrapper(no_cache, view)
 
 
-gModality: str | None = None
-
-
-def get_modality():
-    global gModality
-    if gModality is None:
-        modality = "image"
-        if "wav" in os.listdir(g_state.data_folder):
-            modality = "sound"
-        gModality = modality
-    return gModality
-
-
 @app.route("/annflux")
 @app.route("/")
 def annflux_endpoint():
@@ -154,7 +150,7 @@ def annflux_endpoint():
         {"annflux": "html", "golden": "annflux_golden.html"}[
             os.getenv("INDEED_TEMPLATE", "golden")
         ],
-        **{"modality": get_modality(), "taskType": "classification"},
+        **{"modality": modality, "taskType": "classification"},
     )
 
 
@@ -182,12 +178,56 @@ def thumbnail(uid):
         return send_file(thumb_path, mimetype="image/jpg", as_attachment=False)
 
 
+def get_sound_index() -> Tuple[str, Dict]:
+    """audio_root and segments.csv rows by uid of a sound project, see scripts/prepare_sound.py"""
+    global sound_index
+    if sound_index is None:
+        with open(os.path.join(project_root, "sound_project.json")) as f:
+            audio_root = os.getenv("AUDIO_ROOT") or json.load(f)["audio_root"]
+        segments = pandas.read_csv(
+            os.path.join(project_root, "segments.csv"),
+            dtype={"uid": str, "recording_path": str},
+        )
+        sound_index = audio_root, {row.uid: row for row in segments.itertuples()}
+    return sound_index
+
+
 @app.route("/sounds/<uid>")
 def sound(uid):
-    wav_path = os.path.join(images_path.replace("images", "wav"), f"{uid}.wav")
-    print(wav_path)
-    if os.path.exists(wav_path):
-        return send_file(wav_path, mimetype="audio/wav", as_attachment=False)
+    """
+    Audio of a segment as wav, read from the original recording
+
+    Optional query parameter context=<seconds> adds audio before and after the segment
+    """
+    import soundfile  # optional dependency: pip install annflux[sound]
+
+    if modality != "sound":
+        return standard_json_response("not_found", "Not a sound project", 404)
+    audio_root, segments = get_sound_index()
+    segment = segments.get(uid)
+    if segment is None:
+        return standard_json_response("not_found", f"Unknown segment {uid}", 404)
+    recording_path = os.path.join(audio_root, segment.recording_path)
+    if not os.path.exists(recording_path):
+        return standard_json_response(
+            "not_found", f"Recording of {uid} not found", 404
+        )
+    try:
+        context = float(request.args.get("context", 0))
+    except ValueError:
+        context = math.nan
+    if not (math.isfinite(context) and context >= 0):
+        return standard_json_response("bad_request", "Invalid context", 400)
+    with soundfile.SoundFile(recording_path) as f:
+        start = max(0, round((segment.start_s - context) * f.samplerate))
+        stop = min(f.frames, round((segment.end_s + context) * f.samplerate))
+        f.seek(start)
+        audio = f.read(stop - start)
+        sample_rate = f.samplerate
+    buffer = io.BytesIO()
+    soundfile.write(buffer, audio, sample_rate, format="WAV", subtype="PCM_16")
+    buffer.seek(0)
+    return send_file(buffer, mimetype="audio/wav", as_attachment=False)
 
 
 class StatusUpdate(Callback):
