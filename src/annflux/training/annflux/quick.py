@@ -166,7 +166,7 @@ def quick_reclassification(
     print("instant_reclassification 5", time.time() - start_time)
 
     # print("labeled_indices", labeled_indices)
-    k = 110
+    k = min(110, len(state.features))  # faiss pads with index -1 when k > number of items
     knn_results_path = result_set.get_path_for("knn_results.npz")
     if not os.path.exists(knn_results_path):
         state.g_quick_status = "computing knn index"
@@ -447,6 +447,8 @@ def make_predictions(
         max_mass = 0
         for i2, multilabel_ in enumerate(train_labels[indices_for_i]):
             if skip_first and i2 == 0:
+                continue
+            if indices_for_i[i2] < 0:  # no neighbour, -1 would index the last item
                 continue
             if multilabel_ is not None:
                 distance_weight = (
