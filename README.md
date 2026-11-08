@@ -68,6 +68,27 @@ annflux train_then_features ~/annflux/data/envdataset
 
 to perform parameter efficient fine-tuning of the (default) CLIP model, followed by computation of the adapted features.
 
+## From a folder of sound recordings
+
+Preparing runs in its own environment, it does not need AnnFlux installed:
+
+```bash
+pip install -r requirements.sound.txt
+python src/annflux/scripts/prepare_sound.py {AUDIO_FOLDER} {PROJECT_FOLDER} --backend birdnet
+```
+
+This cuts every wav/flac recording into 3 s segments, computes BirdNET embeddings and writes spectrogram
+thumbnails, `segments.csv`, `features.npz` and `sound_project.json` into `PROJECT_FOLDER`.
+Then, with AnnFlux installed with `pip install .[sound]`:
+
+```bash
+annflux go {PROJECT_FOLDER} --start_labels Your_label_A Your_label_B
+basic_ui {PROJECT_FOLDER}
+```
+
+AnnFlux uses the precomputed features (no CLIP, no fine-tuning) and the UI plays a segment
+from the original recording, `/sounds/{uid}?context=2` adds 2 s before and after.
+
 # Tests and code coverage
 
 ```bash
