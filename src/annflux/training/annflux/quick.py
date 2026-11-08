@@ -451,8 +451,9 @@ def make_predictions(
             if indices_for_i[i2] < 0:  # no neighbour, -1 would index the last item
                 continue
             if multilabel_ is not None:
+                # clamp: a zero (or tiny negative) faiss distance would give inf / inf = NaN
                 distance_weight = (
-                    distances[i][i2] ** knn_rank_exponent
+                    max(distances[i][i2], 1e-12) ** knn_rank_exponent
                 )  # if knn_rank_exponent is None else ((2 + i2) ** knn_rank_exponent)
                 for label_ in multilabel_:
                     probabilities[label_] += 1 / distance_weight
